@@ -1,7 +1,8 @@
 # Invoice Integration API - Quick Start Guide
 
-**⏱️ Reading Time:** 5 minutes  
-**👤 For:** End Users (Finance, Accounting)
+**⏱️ Reading Time:** 6 minutes  
+**👤 For:** End Users (Finance, Accounting)  
+**Version:** 1.1
 
 ---
 
@@ -9,9 +10,10 @@
 
 By the end of this guide, you'll know how to:
 1. ✅ Submit a single invoice
-2. ✅ Submit yesterday's invoices
-3. ✅ Search for pending invoices
-4. ✅ Check invoice status
+2. ✅ Resubmit an edited invoice (NEW!)
+3. ✅ Submit yesterday's invoices
+4. ✅ Search for pending invoices
+5. ✅ Check invoice status
 
 ---
 
@@ -22,8 +24,6 @@ By the end of this guide, you'll know how to:
 1. Open your web browser
 2. Go to: `http://your-server-name:5000/swagger`
 3. You should see the API documentation page
-
-![Swagger UI](placeholder)
 
 ---
 
@@ -61,6 +61,44 @@ You should see:
 
 ---
 
+## 🔄 Step 2B: 🆕 Resubmit an Edited Invoice
+
+### When to Use Resubmit
+
+**Use this when:**
+- You already submitted an invoice to IFCAP
+- Then made changes in AutoCount (amount, line items, etc.)
+- IFCAP now has outdated data
+
+### Example Scenario
+
+You submitted invoice DocKey 12345, but then realized the amount was wrong and corrected it in AutoCount.
+
+### Resubmit via Swagger
+
+1. In Swagger UI, find **POST /api/invoices/resubmit**
+2. Click **"Try it out"**
+3. Enter **DocKey**: `12345`
+4. Click **"Execute"**
+
+### ✅ Success Response
+
+```json
+{
+  "message": "Invoice resubmitted successfully. Old JournalID 5001 deleted, new JournalID: 5050",
+  "journalID": 5050
+}
+```
+
+**What happened:**
+- 🗑️ Old invoice (JournalID 5001) deleted from IFCAP
+- ✅ New invoice (JournalID 5050) created with updated data
+- ✅ AutoCount status updated with new JournalID
+
+**⚠️ Important:** The old invoice is permanently deleted. The new invoice will need approval again.
+
+---
+
 ## 🔍 Step 3: Check Invoice Status
 
 ### Using Swagger
@@ -77,7 +115,7 @@ You should see:
   "docKey": 12345,
   "docNo": "INV-001",
   "docStatus": "Y",
-  "ifcapJournalID": 5001,
+  "ifcapJournalID": 5050,
   "statusDescription": "Submitted/Pending in IFCAP"
 }
 ```
@@ -115,7 +153,6 @@ You should see:
       "udf_APIstatus": "N",
       "statusDescription": "Not Submitted"
     }
-    // ... more invoices
   ],
   "totalRecords": 45,
   "totalPages": 5
@@ -159,19 +196,29 @@ You should see:
       "docKey": 12341,
       "docNo": "INV-021",
       "success": false,
-      "message": "Creditor mapping not found for: 4000/Z999",
+      "message": "Invoice already exists in IFCAP (JournalID: 5002). Use /api/invoices/resubmit endpoint to replace it.",
       "journalID": null
     }
-    // ... more results
   ]
 }
 ```
 
-**What to do with failures:**
-1. Note the DocKey and error message
-2. Common error: "Creditor mapping not found"
-3. Contact IT to add the missing supplier
-4. Resubmit the failed invoice later
+### 🆕 Handling "Already Exists" Errors
+
+**If you see:** `"Invoice already exists in IFCAP"`
+
+**Step 1 - Check if invoice was edited:**
+1. Open the invoice in AutoCount (use the DocKey from error)
+2. Check if you made changes after the original submission
+
+**Step 2 - If edited, resubmit:**
+```
+POST /api/invoices/resubmit?docKey=12341
+```
+
+**Step 3 - If NOT edited:**
+- No action needed
+- Invoice is already in IFCAP correctly
 
 ---
 
@@ -210,7 +257,29 @@ POST /api/invoices/batch/submit-by-date
 
 ---
 
-### Task 3: Check This Month's Submissions
+### Task 3: 🆕 Fix Invoices That Were Edited After Submission
+
+**Scenario:** You submitted 10 invoices yesterday, but today you realized 3 of them had wrong amounts. You fixed them in AutoCount.
+
+**Step 1 - List the edited invoices:**
+```
+Edited: INV-020 (DocKey 12340)
+Edited: INV-022 (DocKey 12342)
+Edited: INV-025 (DocKey 12345)
+```
+
+**Step 2 - Resubmit each one:**
+```
+POST /api/invoices/resubmit?docKey=12340
+POST /api/invoices/resubmit?docKey=12342
+POST /api/invoices/resubmit?docKey=12345
+```
+
+**Result:** IFCAP now has the corrected data!
+
+---
+
+### Task 4: Check This Month's Submissions
 
 ```
 GET /api/invoices/search
@@ -223,7 +292,7 @@ Shows all invoices submitted in January that are pending approval.
 
 ---
 
-### Task 4: Approve an Invoice
+### Task 5: Approve an Invoice
 
 ```
 POST /api/invoices/approve?docKey=12345
@@ -233,13 +302,29 @@ Changes status from Y → A.
 
 ---
 
-### Task 5: Reject an Invoice
+### Task 6: Reject an Invoice
 
 ```
 POST /api/invoices/reject?docKey=12345&reason=Incorrect amount
 ```
 
 Changes status from Y → R and stores the rejection reason.
+
+---
+
+## 🔄 Submit vs. Resubmit - Quick Reference
+
+| Action | Use `/submit` | Use `/resubmit` |
+|--------|---------------|-----------------|
+| First time submitting | ✅ | ❌ |
+| Invoice edited after submission | ❌ | ✅ |
+| Invoice already in IFCAP | ❌ | ✅ |
+| Need to replace old data | ❌ | ✅ |
+| Fresh, new invoice | ✅ | ❌ |
+
+**Rule of Thumb:**
+- **First time?** Use `/submit`
+- **Fixing/updating?** Use `/resubmit`
 
 ---
 
@@ -272,26 +357,7 @@ http://your-server:5000/api/invoices/search?status=N&pageSize=10
 http://your-server:5000/api/invoices/status/12345
 ```
 
-**Note:** POST requests (submit, approve, reject) cannot be done via browser address bar. Use Swagger or tools like Postman.
-
----
-
-## 📱 Using Postman (Advanced)
-
-### Setup
-
-1. Download Postman (free)
-2. Create new request
-3. Set base URL: `http://your-server:5000`
-
-### Example: Submit Invoice
-
-- **Method:** POST
-- **URL:** `{{baseURL}}/api/invoices/submit`
-- **Params:**
-  - Key: `docKey`
-  - Value: `12345`
-- Click **Send**
+**Note:** POST requests (submit, resubmit, approve, reject) cannot be done via browser address bar. Use Swagger or tools like Postman.
 
 ---
 
@@ -309,15 +375,19 @@ http://your-server:5000/api/invoices/status/12345
 **Error:** "Creditor mapping not found for: 4000/XXXX"  
 **Fix:** Contact IT to add the supplier mapping
 
-### 4. Submitting Already Submitted Invoice
-**Error:** "Invoice already submitted. IFCAP JournalID: 5001"  
-**Fix:** Check if this is intentional. Verify in IFCAP using JournalID.
+### 4. 🆕 Using Submit Instead of Resubmit
+**Error:** "Invoice already exists in IFCAP"  
+**Fix:** If invoice was edited, use `/resubmit` instead of `/submit`
+
+### 5. 🆕 Forgetting Invoice Was Edited
+**Problem:** Old data still in IFCAP after you edited in AutoCount  
+**Fix:** Use `/resubmit` to replace with updated data
 
 ---
 
 ## ✅ Daily Checklist
 
-### Morning Routine (5 minutes)
+### Morning Routine (5-7 minutes)
 
 1. **Check pending count**
    ```
@@ -327,14 +397,22 @@ http://your-server:5000/api/invoices/status/12345
 
 2. **Submit yesterday's invoices**
    ```
-   POST /batch/submit-by-date?fromDate=2025-01-21&toDate=2025-01-21
+   POST /batch/submit-by-date?fromDate=2025-01-26&toDate=2025-01-26
    ```
 
 3. **Review results**
    - Note any failures
-   - Report to IT if needed
+   - Note "already exists" errors
 
-4. **Done!** ✅
+4. **Handle edited invoices** (NEW!)
+   - For "already exists" errors, check if invoice was edited
+   - Use `/resubmit` for edited invoices
+
+5. **Report issues to IT**
+   - Creditor mapping errors
+   - Technical failures
+
+6. **Done!** ✅
 
 ---
 
@@ -348,10 +426,16 @@ http://your-server:5000/api/invoices/status/12345
 ✅ **"Invoice not found"**
 - Fix: Verify DocKey in AutoCount
 
+✅ **"Invoice already exists" + invoice was edited**
+- Fix: Use `/resubmit` instead of `/submit`
+
 ### Errors That Need IT Support:
 
 ❌ **"Creditor mapping not found"**
 - Action: Email IT with supplier code
+
+❌ **"Failed to delete old invoice from IFCAP"**
+- Action: Contact IT immediately with DocKey and JournalID
 
 ❌ **"Cannot connect to API"**
 - Action: Contact IT support
@@ -368,7 +452,8 @@ After mastering the basics:
 1. ✅ Set up **automated daily submissions** (Task Scheduler)
 2. ✅ Learn to use **Postman** for advanced testing
 3. ✅ Understand **status workflow** (N → Y → A/R)
-4. ✅ Read full **API Documentation** for all features
+4. ✅ Master the **resubmit workflow** for edited invoices
+5. ✅ Read full **API Documentation** for all features
 
 ---
 
@@ -387,20 +472,33 @@ After mastering the basics:
 
 💡 **Tip 2:** Always review batch results, even if all succeeded
 
-💡 **Tip 3:** Keep a log of creditor mapping errors to report in batches
+💡 **Tip 3:** Keep a log of invoices that need resubmission
 
-💡 **Tip 4:** Use browser bookmarks for common searches
+💡 **Tip 4:** Check "already exists" errors - they might indicate edited invoices
 
 💡 **Tip 5:** Test with 1-2 invoices before large batch submissions
 
+💡 **Tip 6 (NEW):** If you edit an invoice in AutoCount after submission, immediately resubmit it to keep IFCAP in sync
+
+💡 **Tip 7 (NEW):** Use browser bookmarks for common searches and frequent resubmits
+
 ---
 
-**🎉 Congratulations!** You now know the basics of the Invoice Integration API!
+## 🆕 What's New in Version 1.1
+
+✨ **Resubmit Feature** - Replace edited invoices in IFCAP  
+✨ **Better Error Messages** - Clear guidance on when to use resubmit  
+✨ **Improved Workflow** - Handle edited invoices seamlessly
+
+---
+
+**🎉 Congratulations!** You now know the basics of the Invoice Integration API including the new resubmit feature!
 
 **Questions?** Contact IT Support or refer to the full documentation.
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 23, 2025  
+**Document Version:** 1.1  
+**Last Updated:** January 27, 2025  
+**Changes:** Added resubmit feature documentation  
 **For:** End Users
