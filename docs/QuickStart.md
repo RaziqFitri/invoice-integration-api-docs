@@ -1,8 +1,8 @@
 # Invoice Integration API - Quick Start Guide
 
-**⏱️ Reading Time:** 6 minutes  
+**⏱️ Reading Time:** 7 minutes  
 **👤 For:** End Users (Finance, Accounting)  
-**Version:** 1.1
+**Version:** 1.2
 
 ---
 
@@ -10,10 +10,11 @@
 
 By the end of this guide, you'll know how to:
 1. ✅ Submit a single invoice
-2. ✅ Resubmit an edited invoice (NEW!)
+2. ✅ Resubmit an edited invoice
 3. ✅ Submit yesterday's invoices
 4. ✅ Search for pending invoices
 5. ✅ Check invoice status
+6. ✅ 🆕 View audit logs and activity history
 
 ---
 
