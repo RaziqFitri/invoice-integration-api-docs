@@ -1,4 +1,4 @@
-# Invoice Integration API - User Documentation
+# Invoice Integration API - API Reference
 
 **Version:** 1.2  
 **Last Updated:** January 28, 2025  
@@ -10,13 +10,11 @@
 
 1. [Overview](#overview)
 2. [Getting Started](#getting-started)
-3. [API Endpoints](#api-endpoints)
-4. [Audit & Tracking](#audit--tracking)
-5. [Usage Examples](#usage-examples)
-6. [Status Codes](#status-codes)
-7. [Error Handling](#error-handling)
-8. [Troubleshooting](#troubleshooting)
-9. [FAQ](#faq)
+3. [Invoice Endpoints](#invoice-endpoints)
+4. [Audit Endpoints](#audit-endpoints)
+5. [Status Codes](#status-codes)
+6. [Error Handling](#error-handling)
+7. [FAQ](#faq)
 
 ---
 
@@ -37,13 +35,6 @@ The Invoice Integration API bridges AutoCount and IFCAP365, automating invoice t
 ✅ **Approve/Reject** - Manage invoice approvals  
 ✅ **🆕 Complete Audit Trail** - Every action is logged with full details
 
-### System Requirements
-
-- AutoCount database access
-- IFCAP365 database access
-- Network connectivity to API server
-- Web browser or API testing tool (Postman, etc.)
-
 ---
 
 ## Getting Started
@@ -51,36 +42,42 @@ The Invoice Integration API bridges AutoCount and IFCAP365, automating invoice t
 ### Base URL
 
 ```
-http://your-server-name:5000/api/invoices
+http://your-server-name:5000/api
 ```
 
 ### Accessing Swagger UI
-
-For interactive documentation and testing:
 
 ```
 http://your-server-name:5000/swagger
 ```
 
+### Date Format
+
+**Always use:** `YYYY-MM-DD`
+
+**Examples:**
+- ✅ `2025-01-28`
+- ✅ `2024-12-31`
+- ❌ `28/01/2025`
+- ❌ `01-28-2025`
+
 ---
 
-## API Endpoints
+## Invoice Endpoints
 
-### Invoice Operations
-
-#### 1. Submit Single Invoice
+### 1. Submit Single Invoice
 
 **Endpoint:** `POST /api/invoices/submit`
 
-**Description:** Submits a single invoice from AutoCount to IFCAP. Will fail if the invoice already exists in IFCAP.
+**Description:** Submits a single invoice from AutoCount to IFCAP.
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | docKey | integer | Yes | AutoCount invoice DocKey |
 
-**Example Request:**
-```
+**Example:**
+```http
 POST /api/invoices/submit?docKey=12345
 ```
 
@@ -92,32 +89,36 @@ POST /api/invoices/submit?docKey=12345
 }
 ```
 
-**What gets logged:**
-- ✅ Action: Submit
-- ✅ DocKey: 12345
-- ✅ New JournalID: 5001
-- ✅ Status: Y (Submitted)
-- ✅ Success: true
-- ✅ User IP and timestamp
+**Error Response (400 Bad Request):**
+```json
+{
+  "message": "Invoice already exists in IFCAP (JournalID: 5001). Use /api/invoices/resubmit endpoint to replace it."
+}
+```
+
+**Audit Log:** Records submission with timestamp, user, IP, and details.
 
 ---
 
-#### 2. Resubmit Invoice (Replace Existing)
+### 2. Resubmit Invoice
 
 **Endpoint:** `POST /api/invoices/resubmit`
 
-**Description:** Resubmits an invoice that was edited in AutoCount after initial submission. This endpoint will:
-- Delete the old invoice from IFCAP365 (logged as "Delete" action)
-- Create a new invoice with the updated data (logged as "Resubmit" action)
-- Update the AutoCount status
+**Description:** Replaces an existing invoice in IFCAP with updated data from AutoCount.
+
+**When to use:**
+- Invoice was edited after initial submission
+- Amount corrected
+- Line items added/removed
+- Any data change in AutoCount
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | docKey | integer | Yes | AutoCount invoice DocKey |
 
-**Example Request:**
-```
+**Example:**
+```http
 POST /api/invoices/resubmit?docKey=12345
 ```
 
@@ -129,52 +130,99 @@ POST /api/invoices/resubmit?docKey=12345
 }
 ```
 
-**What gets logged:**
-- ✅ Action: Delete (old invoice removal)
-- ✅ Action: Resubmit (new invoice creation)
-- ✅ Old JournalID: 5001
-- ✅ New JournalID: 5050
-- ✅ Full audit trail maintained
+**What Happens:**
+1. Old invoice (JournalID 5001) deleted from IFCAP ✗
+2. New invoice (JournalID 5050) created ✓
+3. AutoCount status updated
+4. **Two audit logs created:** Delete + Resubmit
 
 ---
 
-#### 3. Batch Submit by Date Range
+### 3. Approve Invoice
 
-**Endpoint:** `POST /api/invoices/batch/submit-by-date`
+**Endpoint:** `POST /api/invoices/approve`
+
+**Description:** Approves an invoice (changes status from Y → A).
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| fromDate | date | Yes | Start date (YYYY-MM-DD) |
-| toDate | date | Yes | End date (YYYY-MM-DD) |
-| creditorCode | string | No | Filter by specific creditor |
+| docKey | integer | Yes | AutoCount invoice DocKey |
 
-**Example Request:**
-```
-POST /api/invoices/batch/submit-by-date?fromDate=2025-01-01&toDate=2025-01-31
+**Example:**
+```http
+POST /api/invoices/approve?docKey=12345
 ```
 
-**What gets logged:**
-Each invoice in the batch gets its own audit entry with success/failure status.
+**Success Response (200 OK):**
+```json
+{
+  "message": "Invoice approved successfully"
+}
+```
+
+**Audit Log:** Records approval action.
 
 ---
 
-#### 4. Batch Submit by Status
+### 4. Reject Invoice
 
-**Endpoint:** `POST /api/invoices/batch/submit-by-status`
+**Endpoint:** `POST /api/invoices/reject`
+
+**Description:** Rejects an invoice with a reason (changes status from Y → R).
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| status | string | No | Status code (default: N) |
+| docKey | integer | Yes | AutoCount invoice DocKey |
+| reason | string | Yes | Rejection reason |
 
-**Valid Status Values:** N, NULL, Y, A, R
+**Example:**
+```http
+POST /api/invoices/reject?docKey=12345&reason=Incorrect amount
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "message": "Invoice rejected successfully"
+}
+```
+
+**Audit Log:** Records rejection with reason.
 
 ---
 
-#### 5. Search Invoices
+### 5. Get Invoice Status
+
+**Endpoint:** `GET /api/invoices/status/{docKey}`
+
+**Description:** Get current status of a specific invoice.
+
+**Example:**
+```http
+GET /api/invoices/status/12345
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "docKey": 12345,
+  "docNo": "INV-001",
+  "docStatus": "Y",
+  "remark": "IFCAP:5001 | ",
+  "ifcapJournalID": 5001,
+  "statusDescription": "Submitted/Pending in IFCAP"
+}
+```
+
+---
+
+### 6. Search Invoices
 
 **Endpoint:** `GET /api/invoices/search`
+
+**Description:** Search invoices with filters and pagination.
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -185,71 +233,121 @@ Each invoice in the batch gets its own audit entry with success/failure status.
 | pageSize | integer | No | Records per page (default: 50, max: 1000) |
 | pageNumber | integer | No | Page number (default: 1) |
 
----
-
-#### 6. Get Invoice Status
-
-**Endpoint:** `GET /api/invoices/status/{docKey}`
-
-**Example Request:**
-```
-GET /api/invoices/status/12345
+**Example:**
+```http
+GET /api/invoices/search?fromDate=2025-01-01&toDate=2025-01-31&status=Y&pageSize=20&pageNumber=1
 ```
 
+**Success Response (200 OK):**
+```json
+{
+  "data": [
+    {
+      "docKey": 12345,
+      "docNo": "INV-001",
+      "creditorCode": "4000/T001",
+      "docDate": "2025-01-15T00:00:00",
+      "total": 1500.00,
+      "udf_APIstatus": "Y",
+      "note": "IFCAP:5001 | ",
+      "statusDescription": "Submitted/Pending in IFCAP"
+    }
+  ],
+  "pageNumber": 1,
+  "pageSize": 20,
+  "totalRecords": 45,
+  "totalPages": 3,
+  "hasNextPage": true,
+  "hasPreviousPage": false
+}
+```
+
 ---
 
-#### 7. Approve Invoice
+### 7. Batch Submit by Date Range
 
-**Endpoint:** `POST /api/invoices/approve`
+**Endpoint:** `POST /api/invoices/batch/submit-by-date`
+
+**Description:** Submits all pending invoices within a date range.
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| docKey | integer | Yes | AutoCount invoice DocKey |
+| fromDate | date | Yes | Start date (YYYY-MM-DD) |
+| toDate | date | Yes | End date (YYYY-MM-DD) |
+| creditorCode | string | No | Filter by specific creditor |
 
-**What gets logged:**
-- ✅ Action: Approve
-- ✅ Status changed: Y → A
-- ✅ Timestamp and user
+**Example:**
+```http
+POST /api/invoices/batch/submit-by-date?fromDate=2025-01-01&toDate=2025-01-31
+```
+
+**With Creditor Filter:**
+```http
+POST /api/invoices/batch/submit-by-date?fromDate=2025-01-01&toDate=2025-01-31&creditorCode=4000/T001
+```
+
+**Success Response (200 OK):**
+```json
+{
+  "totalInvoices": 15,
+  "successCount": 13,
+  "failedCount": 2,
+  "summary": "Total: 15, Success: 13, Failed: 2",
+  "results": [
+    {
+      "docKey": 12345,
+      "docNo": "INV-001",
+      "success": true,
+      "message": "Invoice submitted to IFCAP successfully",
+      "journalID": 5001
+    },
+    {
+      "docKey": 12346,
+      "docNo": "INV-002",
+      "success": false,
+      "message": "Creditor mapping not found for: 4000/Z999",
+      "journalID": null
+    }
+  ]
+}
+```
+
+**Audit Log:** Each invoice gets individual audit entry.
 
 ---
 
-#### 8. Reject Invoice
+### 8. Batch Submit by Status
 
-**Endpoint:** `POST /api/invoices/reject`
+**Endpoint:** `POST /api/invoices/batch/submit-by-status`
+
+**Description:** Submits all invoices with a specific status.
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| docKey | integer | Yes | AutoCount invoice DocKey |
-| reason | string | Yes | Rejection reason |
+| status | string | No | Status code (default: N) |
 
-**What gets logged:**
-- ✅ Action: Reject
-- ✅ Status changed: Y → R
-- ✅ Rejection reason stored
-- ✅ Timestamp and user
+**Valid Status Values:** N, NULL, Y, A, R
+
+**Example:**
+```http
+POST /api/invoices/batch/submit-by-status?status=N
+```
+
+**Response:** Same format as batch submit by date.
+
+⚠️ **Warning:** This can process hundreds or thousands of invoices!
 
 ---
 
-## 🆕 Audit & Tracking
+## Audit Endpoints
 
-### Overview
-
-Every action in the API is automatically logged to provide:
-- ✅ Complete audit trail for compliance
-- ✅ Error tracking and debugging
-- ✅ User activity monitoring
-- ✅ Performance metrics
-- ✅ Resubmission history
-
-### Audit Endpoints
-
-#### 1. Get All Audit Logs
+### 1. Get Audit Logs
 
 **Endpoint:** `GET /api/audit/logs`
 
-**Description:** Retrieve filtered audit logs
+**Description:** Retrieve audit logs with optional filters.
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -260,18 +358,18 @@ Every action in the API is automatically logged to provide:
 | docKey | integer | No | Filter by specific invoice |
 
 **Action Types:**
-- `Submit` - Initial invoice submission
-- `Resubmit` - Invoice resubmission (edited)
-- `Delete` - Invoice deletion (during resubmit)
+- `Submit` - Initial submission
+- `Resubmit` - Edited invoice resubmission
+- `Delete` - Deletion (during resubmit)
 - `Approve` - Invoice approval
 - `Reject` - Invoice rejection
 
-**Example Request:**
-```
+**Example:**
+```http
 GET /api/audit/logs?fromDate=2025-01-01&toDate=2025-01-31&action=Resubmit
 ```
 
-**Response:**
+**Success Response (200 OK):**
 ```json
 {
   "totalRecords": 15,
@@ -293,20 +391,26 @@ GET /api/audit/logs?fromDate=2025-01-01&toDate=2025-01-31&action=Resubmit
 }
 ```
 
+**Use Cases:**
+- Generate monthly reports
+- Track all activity
+- Filter by action type
+- Export for analysis
+
 ---
 
-#### 2. Get Invoice History
+### 2. Get Invoice History
 
 **Endpoint:** `GET /api/audit/invoice/{docKey}`
 
-**Description:** Get complete history for a specific invoice
+**Description:** Get complete history for a specific invoice.
 
-**Example Request:**
-```
+**Example:**
+```http
 GET /api/audit/invoice/12345
 ```
 
-**Response:**
+**Success Response (200 OK):**
 ```json
 {
   "docKey": 12345,
@@ -316,14 +420,16 @@ GET /api/audit/invoice/12345
       "logDate": "2025-01-28T10:00:00",
       "action": "Submit",
       "newJournalID": 5001,
-      "success": true
+      "success": true,
+      "details": "Amount: 1500.00, Lines: 3"
     },
     {
       "logDate": "2025-01-28T14:30:00",
       "action": "Resubmit",
       "oldJournalID": 5001,
       "newJournalID": 5050,
-      "success": true
+      "success": true,
+      "details": "Amount: 1600.00, Lines: 4"
     },
     {
       "logDate": "2025-01-28T16:00:00",
@@ -335,25 +441,26 @@ GET /api/audit/invoice/12345
 ```
 
 **Use Cases:**
-- Track invoice lifecycle from creation to approval
-- Identify which invoices were edited (resubmitted)
+- Track invoice lifecycle
+- Verify if invoice was edited
 - Audit trail for compliance
-- Troubleshoot submission issues
+- Troubleshoot issues
+- See who did what
 
 ---
 
-#### 3. Get Today's Summary
+### 3. Get Today's Summary
 
 **Endpoint:** `GET /api/audit/summary/today`
 
-**Description:** Get summary of today's API activity
+**Description:** Get summary of today's API activity.
 
-**Example Request:**
-```
+**Example:**
+```http
 GET /api/audit/summary/today
 ```
 
-**Response:**
+**Success Response (200 OK):**
 ```json
 {
   "date": "2025-01-28",
@@ -394,17 +501,18 @@ GET /api/audit/summary/today
 
 **Use Cases:**
 - Daily monitoring
-- Performance tracking
+- Quick health check
 - Identify issues early
-- Generate daily reports
+- Track success rate
+- Review failures
 
 ---
 
-#### 4. Get Resubmit History
+### 4. Get Resubmit History
 
 **Endpoint:** `GET /api/audit/resubmits`
 
-**Description:** Get all invoices that were resubmitted (edited after initial submission)
+**Description:** Get all invoices that were resubmitted (edited after initial submission).
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -412,12 +520,12 @@ GET /api/audit/summary/today
 | fromDate | date | No | Start date (default: 7 days ago) |
 | toDate | date | No | End date |
 
-**Example Request:**
-```
+**Example:**
+```http
 GET /api/audit/resubmits?fromDate=2025-01-20&toDate=2025-01-28
 ```
 
-**Response:**
+**Success Response (200 OK):**
 ```json
 {
   "totalResubmits": 12,
@@ -440,16 +548,16 @@ GET /api/audit/resubmits?fromDate=2025-01-20&toDate=2025-01-28
 **Use Cases:**
 - Track which invoices were edited
 - Monitor data quality
-- Identify patterns (why are invoices being edited?)
+- Identify patterns
 - Compliance reporting
 
 ---
 
-#### 5. Get Deletion History
+### 5. Get Deletion History
 
 **Endpoint:** `GET /api/audit/deletions`
 
-**Description:** Get all invoices deleted from IFCAP (during resubmit operations)
+**Description:** Get all invoices deleted from IFCAP (during resubmit operations).
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -457,12 +565,12 @@ GET /api/audit/resubmits?fromDate=2025-01-20&toDate=2025-01-28
 | fromDate | date | No | Start date (default: 7 days ago) |
 | toDate | date | No | End date |
 
-**Example Request:**
-```
+**Example:**
+```http
 GET /api/audit/deletions?fromDate=2025-01-20&toDate=2025-01-28
 ```
 
-**Response:**
+**Success Response (200 OK):**
 ```json
 {
   "totalDeletions": 12,
@@ -481,154 +589,10 @@ GET /api/audit/deletions?fromDate=2025-01-20&toDate=2025-01-28
 ```
 
 **Use Cases:**
-- Track what was removed from IFCAP
+- Track what was removed
 - Audit trail for deletions
 - Compliance requirements
-- Link deletions to resubmissions
-
----
-
-## Usage Examples
-
-### Example 1: Submit Invoice and Check Audit Log
-
-**Step 1 - Submit invoice:**
-```
-POST /api/invoices/submit?docKey=12345
-```
-
-**Step 2 - Check if it was logged:**
-```
-GET /api/audit/invoice/12345
-```
-
-**Response shows:**
-```json
-{
-  "docKey": 12345,
-  "totalActions": 1,
-  "history": [
-    {
-      "logDate": "2025-01-28T10:00:00",
-      "action": "Submit",
-      "newJournalID": 5001,
-      "success": true,
-      "details": "Amount: 1500.00, Creditor: 4000/T001, Lines: 3"
-    }
-  ]
-}
-```
-
----
-
-### Example 2: Edit Invoice and Resubmit
-
-**Scenario:** Invoice submitted with wrong amount, then corrected
-
-**Step 1 - Original submission:**
-```
-POST /api/invoices/submit?docKey=12345
-→ Creates JournalID 5001
-```
-
-**Step 2 - User edits in AutoCount:**
-- Changes amount from RM 1,500 to RM 1,600
-- Adds extra line item
-
-**Step 3 - Resubmit:**
-```
-POST /api/invoices/resubmit?docKey=12345
-→ Deletes JournalID 5001
-→ Creates JournalID 5050
-```
-
-**Step 4 - Check history:**
-```
-GET /api/audit/invoice/12345
-```
-
-**Response shows complete trail:**
-```json
-{
-  "totalActions": 3,
-  "history": [
-    {
-      "action": "Submit",
-      "newJournalID": 5001,
-      "details": "Amount: 1500.00, Lines: 3"
-    },
-    {
-      "action": "Delete",
-      "oldJournalID": 5001,
-      "details": "Deleted as part of resubmit"
-    },
-    {
-      "action": "Resubmit",
-      "oldJournalID": 5001,
-      "newJournalID": 5050,
-      "details": "Amount: 1600.00, Lines: 4"
-    }
-  ]
-}
-```
-
----
-
-### Example 3: Daily Monitoring Workflow
-
-**Every morning at 8:00 AM:**
-
-**Step 1 - Check today's activity:**
-```
-GET /api/audit/summary/today
-```
-
-**Step 2 - Submit yesterday's invoices:**
-```
-POST /api/invoices/batch/submit-by-date?fromDate=2025-01-27&toDate=2025-01-27
-```
-
-**Step 3 - Check for failures:**
-```
-GET /api/audit/summary/today
-→ Look at "recentFailures" section
-```
-
-**Step 4 - Fix failures:**
-- Creditor mapping errors → Email IT
-- "Already exists" errors → Check if edited → Resubmit if needed
-
-**Step 5 - Verify all processed:**
-```
-GET /api/invoices/search?status=N
-→ Should show minimal pending invoices
-```
-
----
-
-### Example 4: Month-End Audit Report
-
-**Generate report for January 2025:**
-
-**All activity:**
-```
-GET /api/audit/logs?fromDate=2025-01-01&toDate=2025-01-31
-```
-
-**Resubmissions only:**
-```
-GET /api/audit/resubmits?fromDate=2025-01-01&toDate=2025-01-31
-```
-
-**Failures only:**
-Filter response by `success: false`
-
-**Generate summary:**
-- Total submissions: X
-- Successful: Y
-- Failed: Z
-- Resubmitted: N
-- Success rate: Y/X × 100%
+- Link to resubmissions
 
 ---
 
@@ -656,177 +620,179 @@ Filter response by `success: false`
 
 ## Error Handling
 
-All errors are automatically logged to the audit table with:
-- Error message
-- Timestamp
-- DocKey
-- User IP
-- Action attempted
+### Common Error Messages
 
-### Common Errors
+#### 1. "Creditor mapping not found for: XXXX"
 
-See main API Reference documentation for detailed error handling.
+**Cause:** Supplier code not in configuration.
 
----
+**Solution:** Contact IT to add the creditor mapping.
 
-## Troubleshooting
-
-### Issue: Cannot Find Audit Logs
-
-**Check:**
-```sql
-SELECT * FROM InvoiceAuditLog 
-ORDER BY LogDate DESC;
+**Example:**
+```json
+{
+  "message": "Creditor mapping not found for: 4000/Z999"
+}
 ```
 
-If empty, the audit logging might not be working. Contact IT.
-
 ---
 
-### Issue: Too Many Audit Records
+#### 2. "Invoice already exists in IFCAP"
+
+**Full Error:**
+```json
+{
+  "message": "Invoice already exists in IFCAP (JournalID: 5001). Use /api/invoices/resubmit endpoint to replace it."
+}
+```
 
 **Solution:**
-Use filters to narrow down:
-```
-GET /api/audit/logs?fromDate=2025-01-28&action=Submit
-```
+- **If NOT edited:** No action needed
+- **If edited in AutoCount:** Use `/api/invoices/resubmit`
 
 ---
 
-### Issue: Need to Find Who Did Something
+#### 3. "Failed to delete old invoice from IFCAP"
+
+**Cause:** During resubmission, couldn't delete old invoice.
 
 **Solution:**
-```
-GET /api/audit/invoice/12345
-```
+- Contact IT immediately
+- Provide DocKey and JournalID
+- Do not retry
 
-Look at `userName` and `ipAddress` fields.
+---
+
+#### 4. "Cannot submit cancelled invoice"
+
+**Cause:** Invoice is marked as cancelled in AutoCount.
+
+**Solution:** Verify invoice status in AutoCount.
+
+---
+
+#### 5. "No line items found for invoice"
+
+**Cause:** Invoice has no detail lines.
+
+**Solution:** Add line items to the invoice in AutoCount before submitting.
+
+---
+
+#### 6. "Invoice not found or not in pending status (Y)"
+
+**Cause:** Trying to approve/reject an invoice that:
+- Doesn't exist
+- Hasn't been submitted yet
+- Was already approved
+- Was already rejected
+
+**Solution:** Check invoice status first.
 
 ---
 
 ## FAQ
 
-### Q1: How long are audit logs kept?
+### Q1: How do I know if an invoice was edited after submission?
 
-**A:** Currently indefinitely. In the future, logs older than 2 years may be archived.
+**A:** Check the audit log:
+```http
+GET /api/audit/invoice/{docKey}
+```
+Look for "Resubmit" action.
 
 ---
 
 ### Q2: Can I see who submitted an invoice?
 
-**A:** Yes! Use `GET /api/audit/invoice/{docKey}` and check the `userName` and `ipAddress` fields.
+**A:** Yes! Audit logs track username and IP:
+```http
+GET /api/audit/invoice/{docKey}
+```
 
 ---
 
-### Q3: How do I generate a monthly report?
+### Q3: How do I generate a monthly audit report?
 
 **A:**
-```
+```http
 GET /api/audit/logs?fromDate=2025-01-01&toDate=2025-01-31
 ```
-
-Export the JSON and process in Excel or use SQL queries.
+Export JSON and process in Excel or use SQL queries.
 
 ---
 
 ### Q4: What gets logged when I resubmit?
 
 **A:** Two entries:
-1. **Delete** - Removal of old invoice from IFCAP
-2. **Resubmit** - Creation of new invoice with updated data
+1. **Delete** - Old invoice removal
+2. **Resubmit** - New invoice creation
 
-Both entries include Old JournalID and New JournalID.
+Both include Old/New JournalIDs.
 
 ---
 
 ### Q5: Can I see all invoices that were edited?
 
 **A:** Yes!
-```
+```http
 GET /api/audit/resubmits
 ```
-
-This shows all invoices that were resubmitted (edited after initial submission).
 
 ---
 
 ### Q6: How do I track errors?
 
 **A:**
-```
+```http
 GET /api/audit/summary/today
 ```
-
-Look at the `recentFailures` section for today's errors.
+Check the `recentFailures` section.
 
 ---
 
-## Best Practices
+### Q7: How long are audit logs kept?
 
-### 1. Daily Routine
-✅ Check today's summary every morning  
-✅ Review failures and fix promptly  
-✅ Monitor resubmission frequency  
-✅ Track success rate (should be >95%)
+**A:** Currently indefinitely. Future: 2-year retention.
 
-### 2. Weekly Review
-✅ Review resubmit history (why are invoices being edited?)  
-✅ Check for recurring errors  
-✅ Verify no unexpected deletions  
-✅ Monitor user activity
+---
 
-### 3. Monthly Reporting
-✅ Generate full audit report  
-✅ Calculate success rate  
-✅ Track resubmission trends  
-✅ Identify improvement areas  
-✅ Archive if needed
+### Q8: What's the difference between /submit and /resubmit?
 
-### 4. Compliance
-✅ Audit logs provide compliance trail  
-✅ Every action has timestamp and user  
-✅ Deletions are tracked  
-✅ Changes are fully documented
+**A:**
+- **`/submit`**: First-time submission. Fails if already exists.
+- **`/resubmit`**: Replaces existing. Deletes old and creates new.
+
+---
+
+### Q9: Are deletions tracked?
+
+**A:** Yes!
+```http
+GET /api/audit/deletions
+```
+
+---
+
+### Q10: Can I filter audit logs by user?
+
+**A:** Not directly via API, but you can query the database:
+```sql
+SELECT * FROM InvoiceAuditLog WHERE UserName = 'username';
+```
 
 ---
 
 ## Support
 
-### Need Help?
+**Technical Issues:**  
+IT Support - support@company.com - Ext. 1234
 
-**For Technical Issues:**
-- API not responding
-- Audit logs not showing
-- Connection errors
-
-**Contact:** IT Support  
-**Email:** support@company.com  
-**Phone:** Extension 1234
-
-**For Business Issues:**
-- Understanding audit reports
-- Compliance questions
-- Process improvements
-
-**Contact:** Finance Department  
-**Email:** finance@company.com
-
----
-
-### Reporting Issues
-
-When reporting issues, include:
-1. ✅ Endpoint used
-2. ✅ Parameters sent
-3. ✅ Error message received
-4. ✅ DocKey or DocNo
-5. ✅ Check audit logs: `GET /api/audit/invoice/{docKey}`
-6. ✅ Screenshot
-7. ✅ Date and time
+**Business Issues:**  
+Finance Department - finance@company.com
 
 ---
 
 **Document Version:** 1.2  
 **Last Updated:** January 28, 2025  
-**Changes:** Added complete audit logging documentation  
-**Next Review:** February 2025
+**Changes:** Added complete audit logging documentation
